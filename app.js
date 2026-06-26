@@ -902,7 +902,12 @@ board.addEventListener("pointerdown", e => {
   window.addEventListener("pointermove", onPointerMove);
   window.addEventListener("pointerup", endDrag);
   window.addEventListener("pointercancel", endDrag);
+  if (e.pointerType !== "mouse") window.addEventListener("touchmove", lockScroll, { passive: false });
 });
+
+// Non-passive touchmove is the only reliable way to stop Android from scrolling
+// mid-drag; touch-action and a preventDefault on pointermove aren't enough.
+function lockScroll(e) { e.preventDefault(); }
 
 function onPointerMove(e) {
   if (!dragged) return;
@@ -975,6 +980,7 @@ function endDrag(e) {
   window.removeEventListener("pointermove", onPointerMove);
   window.removeEventListener("pointerup", endDrag);
   window.removeEventListener("pointercancel", endDrag);
+  window.removeEventListener("touchmove", lockScroll);
   scrollX = scrollY = 0;
   if (scrollRAF) { cancelAnimationFrame(scrollRAF); scrollRAF = 0; }
   try { dragged.releasePointerCapture(pointerId); } catch {}
