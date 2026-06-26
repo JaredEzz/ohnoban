@@ -866,7 +866,7 @@ let armed = false;           // the card has been picked up; a move now drags it
 let dragActive = false;      // movement has passed the threshold
 let holdTimer = 0;
 let scrollX = 0, scrollY = 0, scrollRAF = 0;
-const HOLD_MS = 350;         // touch press-and-hold before a card lifts
+const HOLD_MS = 250;         // touch press-and-hold before a card lifts
 const SCROLL_TOL = 10;       // moving more than this before lift means "scrolling"
 const DRAG_THRESHOLD = 6;    // px of movement before a lifted card starts dragging
 const EDGE = 56;             // px from an edge where auto-scroll starts
@@ -899,8 +899,19 @@ board.addEventListener("pointerdown", e => {
   window.addEventListener("pointerup", endDrag);
   window.addEventListener("pointercancel", endDrag);
   if (e.pointerType === "mouse") arm();          // a mouse can drag right away
-  else holdTimer = setTimeout(arm, HOLD_MS);     // a finger holds to pick up
+  else {                                         // a finger holds to pick up
+    holdTimer = setTimeout(arm, HOLD_MS);
+    window.addEventListener("touchmove", lockScroll, { passive: false });
+  }
 });
+
+// On touch, stop the browser from scrolling once a card is lifted. A non-passive
+// touchmove is the only reliable way to do this on Android; touch-action and a
+// preventDefault on pointermove aren't enough — the browser claims the gesture
+// and cancels the drag.
+function lockScroll(e) {
+  if (armed) e.preventDefault();
+}
 
 function arm() {
   armed = true;
@@ -994,6 +1005,7 @@ function teardown() {
   window.removeEventListener("pointermove", onPointerMove);
   window.removeEventListener("pointerup", endDrag);
   window.removeEventListener("pointercancel", endDrag);
+  window.removeEventListener("touchmove", lockScroll);
   if (ghost) { ghost.remove(); ghost = null; }
   clearDragOver();
   board.classList.remove("dragging");
