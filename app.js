@@ -168,6 +168,24 @@ function renderCard(card) {
   li.setAttribute("role", "button");
   cardOf.set(li, card);
   fillCard(li, card);
+  // Touch move controls — CSS reveals them only on narrow screens, where native
+  // drag-and-drop doesn't fire. fillCard set innerHTML, so append after it.
+  const moves = document.createElement("div");
+  moves.className = "card-move";
+  for (const [dir, glyph, label] of [
+    ["left", "‹", "Move left"], ["up", "↑", "Move up"],
+    ["down", "↓", "Move down"], ["right", "›", "Move right"],
+  ]) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "move-btn";
+    b.dataset.dir = dir;
+    b.tabIndex = -1;
+    b.setAttribute("aria-label", label);
+    b.textContent = glyph;
+    moves.append(b);
+  }
+  li.append(moves);
   return li;
 }
 
@@ -310,6 +328,9 @@ function saveNoteEditor(form, note) {
 // --- board interactions (delegated) ---
 
 board.addEventListener("click", e => {
+  const cardMoveBtn = e.target.closest(".move-btn");
+  if (cardMoveBtn) return moveCard(cardOf.get(cardMoveBtn.closest(".card")), cardMoveBtn.dataset.dir);
+
   const addLink = e.target.closest(".add-card");
   if (addLink) {
     e.preventDefault();
@@ -593,34 +614,42 @@ dialog.addEventListener("close", () => {
   if (location.hash.startsWith("#card")) reflectHash("board");
 });
 
-// Arrow keys move the focused card (or the open card while viewing it):
-// left/right across columns, up/down within a column.
-document.addEventListener("keydown", e => {
-  if (!e.key.startsWith("Arrow")) return;
-  const tag = e.target.tagName;
-  if (tag === "INPUT" || tag === "TEXTAREA" || e.target.isContentEditable) return;
-  const card = dialog.open ? editingItem : cardOf.get(e.target);
-  if (!card) return;
+// Move a card one step: left/right across columns, up/down within its column.
+// Returns whether it actually moved. Shared by the arrow keys and the touch
+// move buttons (drag-and-drop doesn't fire on touchscreens).
+function moveCard(card, dir) {
   const col = columnContaining(card);
-  if (!col) return; // notes have no column and don't move with arrow keys
+  if (!col) return false; // notes have no column and don't move
   const idx = col.cards.indexOf(card);
-
-  if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
-    const colIdx = data.columns.indexOf(col);
-    const target = data.columns[colIdx + (e.key === "ArrowLeft" ? -1 : 1)];
-    if (!target) return;
-    e.preventDefault();
+  if (dir === "left" || dir === "right") {
+    const target = data.columns[data.columns.indexOf(col) + (dir === "left" ? -1 : 1)];
+    if (!target) return false;
     col.cards.splice(idx, 1);
     target.cards.push(card);
     card.updatedAt = now();
   } else {
-    const j = idx + (e.key === "ArrowUp" ? -1 : 1);
-    if (j < 0 || j >= col.cards.length) return;
-    e.preventDefault();
+    const j = idx + (dir === "up" ? -1 : 1);
+    if (j < 0 || j >= col.cards.length) return false;
     [col.cards[idx], col.cards[j]] = [col.cards[j], col.cards[idx]];
   }
   commit();
-  if (!dialog.open) elementFor(card)?.focus();
+  return true;
+}
+
+const ARROW_DIR = { ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down" };
+
+// Arrow keys move the focused card (or the open card while viewing it).
+document.addEventListener("keydown", e => {
+  const dir = ARROW_DIR[e.key];
+  if (!dir) return;
+  const tag = e.target.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || e.target.isContentEditable) return;
+  const card = dialog.open ? editingItem : cardOf.get(e.target);
+  if (!card) return;
+  if (moveCard(card, dir)) {
+    e.preventDefault();
+    if (!dialog.open) elementFor(card)?.focus();
+  }
 });
 
 // --- background ---

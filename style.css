@@ -173,3 +173,10 @@ dialog legend { font-size: .85rem; font-weight: 600; margin-bottom: .35rem; }
   /* Bigger tap targets for the column controls. */
   .col-move-btn, .col-delete-btn { font-size: 1.2rem; padding: .1rem .3rem; }
 }
+
+/* --- touch move buttons --- */
+.card-move { display: none; gap: .3rem; margin-top: .6rem; justify-content: flex-end; }
+.card .move-btn { pointer-events: auto; } /* beat .card * { pointer-events: none } */
+.move-btn { font: inherit; font-size: 1.1rem; line-height: 1; background: #fff; border: 2px solid #000; border-radius: .25rem; padding: .3rem .7rem; cursor: pointer; }
+.move-btn:hover { background: #000; color: #fff; }
+@media (max-width: 640px) { .card-move { display: flex; } }
