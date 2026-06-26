@@ -178,4 +178,9 @@ dialog legend { font-size: .85rem; font-weight: 600; margin-bottom: .35rem; }
 /* Suppress selection and the long-press callout so a hold reads as a pickup. */
 .card { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .card.lifted { box-shadow: 0 0 0 2px #000, 0 6px 18px rgba(0,0,0,.25); transform: scale(1.02); }
-.drag-ghost { position: fixed; z-index: 1000; margin: 0; pointer-events: none; opacity: .9; box-shadow: 0 10px 28px rgba(0,0,0,.35); transform: rotate(1.5deg); cursor: grabbing; }
+.drag-ghost { position: fixed; z-index: 1000; margin: 0; pointer-events: none; opacity: .95; box-shadow: 0 10px 28px rgba(0,0,0,.35); transform: rotate(1.5deg); cursor: grabbing; }
+/* Drop target: the card's origin becomes a clear dashed slot showing exactly
+   where it will land, and the column it's over lights up. */
+.card.dragging { opacity: 1; background: #eaf1ff; border: 3px dashed #2b4f8e; }
+.card.dragging > * { visibility: hidden; }
+.column.drag-over { outline: 3px solid #2b4f8e; outline-offset: -3px; background: #f4f8ff; }
