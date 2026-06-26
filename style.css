@@ -173,3 +173,9 @@ dialog legend { font-size: .85rem; font-weight: 600; margin-bottom: .35rem; }
   /* Bigger tap targets for the column controls. */
   .col-move-btn, .col-delete-btn { font-size: 1.2rem; padding: .1rem .3rem; }
 }
+
+/* --- drag (pointer-based; press-and-hold to lift on touch) --- */
+/* Suppress selection and the long-press callout so a hold reads as a pickup. */
+.card { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.card.lifted { box-shadow: 0 0 0 2px #000, 0 6px 18px rgba(0,0,0,.25); transform: scale(1.02); }
+.drag-ghost { position: fixed; z-index: 1000; margin: 0; pointer-events: none; opacity: .9; box-shadow: 0 10px 28px rgba(0,0,0,.35); transform: rotate(1.5deg); cursor: grabbing; }

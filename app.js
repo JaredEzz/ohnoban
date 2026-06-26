@@ -163,7 +163,6 @@ function fillCard(el, card) {
 function renderCard(card) {
   const li = document.createElement("li");
   li.className = "card";
-  li.draggable = true;
   li.tabIndex = 0;
   li.setAttribute("role", "button");
   cardOf.set(li, card);
@@ -848,15 +847,30 @@ pickFile("import-btn", "import-file", async file => {
   }
 });
 
-// --- drag and drop ---
-// dragover moves the <li> directly for a live preview; the DOM order is
-// adopted into state on drop. dragend re-renders from state, which commits a
-// completed drop and snaps a cancelled drag back to where it started.
+// --- drag and drop (pointer-based, so it works on touch as well as mouse) ---
+// A card is picked up by pressing it: a mouse grabs at once, a finger holds
+// briefly (HOLD_MS) so a quick swipe still scrolls the board. Once lifted, the
+// real <li> is moved between/within column lists for a live preview, a floating
+// clone follows the pointer, and the board auto-scrolls near its edges so
+// off-screen columns are reachable on a phone. On release the DOM order is
+// adopted into state; re-rendering then commits a drop or snaps a cancel back.
 
-let dragged = null; // the <li> being dragged
+let dragged = null;          // the <li> under the pointer
 let dragOriginColumn = null;
-let overCol = null;
-let lastY = 0;
+let overCol = null;          // column highlighted as the current drop target
+let ghost = null;            // floating clone under the pointer
+let ghostDX = 0, ghostDY = 0;
+let pointerId = null;
+let startX = 0, startY = 0, lastX = 0, lastY = 0;
+let armed = false;           // the card has been picked up; a move now drags it
+let dragActive = false;      // movement has passed the threshold
+let holdTimer = 0;
+let scrollX = 0, scrollY = 0, scrollRAF = 0;
+const HOLD_MS = 350;         // touch press-and-hold before a card lifts
+const SCROLL_TOL = 10;       // moving more than this before lift means "scrolling"
+const DRAG_THRESHOLD = 6;    // px of movement before a lifted card starts dragging
+const EDGE = 56;             // px from an edge where auto-scroll starts
+const SCROLL_STEP = 18;
 
 function clearDragOver() {
   if (overCol) { overCol.classList.remove("drag-over"); overCol = null; }
@@ -871,57 +885,153 @@ function getDragAfterCard(ul, y) {
   return null;
 }
 
-board.addEventListener("dragstart", e => {
+board.addEventListener("pointerdown", e => {
+  if (e.button > 0) return;
   const card = e.target.closest(".card");
   if (!card) return;
   dragged = card;
   dragOriginColumn = columnOf.get(card.closest(".column"));
-  card.classList.add("dragging");
-  board.classList.add("dragging");
+  pointerId = e.pointerId;
+  startX = lastX = e.clientX;
+  startY = lastY = e.clientY;
+  armed = dragActive = false;
+  window.addEventListener("pointermove", onPointerMove);
+  window.addEventListener("pointerup", endDrag);
+  window.addEventListener("pointercancel", endDrag);
+  if (e.pointerType === "mouse") arm();          // a mouse can drag right away
+  else holdTimer = setTimeout(arm, HOLD_MS);     // a finger holds to pick up
 });
 
-board.addEventListener("dragover", e => {
-  if (!dragged) return;
-  e.preventDefault();
-  const col = e.target.closest(".column");
-  if (!col) return;
+function arm() {
+  armed = true;
+  holdTimer = 0;
+  dragged.classList.add("lifted");
+  try { dragged.setPointerCapture(pointerId); } catch {}
+  navigator.vibrate?.(12);
+}
 
+function onPointerMove(e) {
+  if (!dragged) return;
+  lastX = e.clientX; lastY = e.clientY;
+  const moved = Math.hypot(e.clientX - startX, e.clientY - startY);
+  if (!armed) {
+    // Still waiting on the hold: a real move means the user is scrolling, so
+    // drop the gesture and let the browser scroll.
+    if (moved > SCROLL_TOL) cancelGesture();
+    return;
+  }
+  if (!dragActive) {
+    if (moved < DRAG_THRESHOLD) return;
+    beginDrag(e);
+  }
+  if (e.cancelable) e.preventDefault();
+  moveGhost(e.clientX, e.clientY);
+  dropInto(e.clientX, e.clientY);
+  edgeScroll(e.clientX, e.clientY);
+}
+
+function beginDrag(e) {
+  dragActive = true;
+  dragged.classList.remove("lifted");
+  dragged.classList.add("dragging");
+  board.classList.add("dragging");
+  document.body.style.userSelect = "none";
+  const box = dragged.getBoundingClientRect();
+  ghostDX = e.clientX - box.left;
+  ghostDY = e.clientY - box.top;
+  ghost = dragged.cloneNode(true);
+  ghost.classList.add("drag-ghost");
+  ghost.classList.remove("dragging");
+  ghost.style.width = box.width + "px";
+  document.body.append(ghost);
+}
+
+function moveGhost(x, y) {
+  if (ghost) { ghost.style.left = (x - ghostDX) + "px"; ghost.style.top = (y - ghostDY) + "px"; }
+}
+
+// Slot the dragged <li> into the column under the pointer. The ghost is
+// pointer-events:none, so elementFromPoint sees the board beneath it.
+function dropInto(x, y) {
+  const col = document.elementFromPoint(x, y)?.closest?.(".column");
+  if (!col) return;
   if (col !== overCol) {
     clearDragOver();
     overCol = col;
     col.classList.add("drag-over");
   }
-
-  if (Math.abs(e.clientY - lastY) < 5) return;
-  lastY = e.clientY;
-
   const ul = col.querySelector("ul");
-  const afterCard = getDragAfterCard(ul, e.clientY);
-  if (afterCard) ul.insertBefore(dragged, afterCard);
+  const after = getDragAfterCard(ul, y);
+  if (after) ul.insertBefore(dragged, after);
   else ul.appendChild(dragged);
-});
+}
 
-board.addEventListener("drop", e => {
-  e.preventDefault();
-  if (!dragged) return;
-  for (const section of board.querySelectorAll(".column")) {
-    const col = columnOf.get(section);
-    col.cards = [...section.querySelectorAll(".card")].map(li => cardOf.get(li));
-  }
-  if (columnOf.get(dragged.closest(".column")) !== dragOriginColumn) {
-    cardOf.get(dragged).updatedAt = now();
-  }
-  save();
-});
+// While the pointer rests near an edge, scroll the board horizontally / the
+// window vertically so off-screen columns can be reached mid-drag.
+function edgeScroll(x, y) {
+  const box = board.getBoundingClientRect();
+  scrollX = x < box.left + EDGE ? -1 : x > box.right - EDGE ? 1 : 0;
+  scrollY = y < EDGE ? -1 : y > window.innerHeight - EDGE ? 1 : 0;
+  if ((scrollX || scrollY) && !scrollRAF) scrollRAF = requestAnimationFrame(edgeScrollStep);
+}
 
-board.addEventListener("dragend", () => {
+function edgeScrollStep() {
+  scrollRAF = 0;
+  if (!dragActive || (!scrollX && !scrollY)) return;
+  if (scrollX) board.scrollLeft += scrollX * SCROLL_STEP;
+  if (scrollY) window.scrollBy(0, scrollY * SCROLL_STEP);
+  moveGhost(lastX, lastY);
+  dropInto(lastX, lastY); // follow into columns revealed by the scroll
+  scrollRAF = requestAnimationFrame(edgeScrollStep);
+}
+
+// Reset everything and detach the window listeners; shared by a cancel and a
+// completed drop.
+function teardown() {
+  clearTimeout(holdTimer); holdTimer = 0;
+  scrollX = scrollY = 0;
+  if (scrollRAF) { cancelAnimationFrame(scrollRAF); scrollRAF = 0; }
+  window.removeEventListener("pointermove", onPointerMove);
+  window.removeEventListener("pointerup", endDrag);
+  window.removeEventListener("pointercancel", endDrag);
+  if (ghost) { ghost.remove(); ghost = null; }
   clearDragOver();
-  dragged = null;
-  dragOriginColumn = null;
-  lastY = 0;
   board.classList.remove("dragging");
-  renderBoard();
-});
+  document.body.style.userSelect = "";
+  if (dragged) {
+    dragged.classList.remove("lifted", "dragging");
+    try { dragged.releasePointerCapture(pointerId); } catch {}
+  }
+  dragged = null; dragOriginColumn = null; armed = false; dragActive = false;
+}
+
+// The user started scrolling before the card lifted — abandon the gesture.
+function cancelGesture() { teardown(); }
+
+function endDrag(e) {
+  if (dragActive && e.type === "pointerup") {
+    for (const section of board.querySelectorAll(".column")) {
+      const col = columnOf.get(section);
+      col.cards = [...section.querySelectorAll(".card")].map(li => cardOf.get(li)).filter(Boolean);
+    }
+    if (columnOf.get(dragged.closest(".column")) !== dragOriginColumn) {
+      cardOf.get(dragged).updatedAt = now();
+    }
+    save();
+    suppressNextClick(); // a real drag shouldn't also open the card
+  }
+  const wasActive = dragActive;
+  teardown();
+  if (wasActive) renderBoard();
+}
+
+// Swallow the click the browser fires after release, so a drag that ends on a
+// card doesn't also open it.
+function suppressNextClick() {
+  const swallow = e => { e.stopPropagation(); e.preventDefault(); };
+  window.addEventListener("click", swallow, { capture: true, once: true });
+  setTimeout(() => window.removeEventListener("click", swallow, { capture: true }), 350);
+}
 
 // --- init ---
 
