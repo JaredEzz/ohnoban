@@ -152,3 +152,24 @@ dialog legend { font-size: .85rem; font-weight: 600; margin-bottom: .35rem; }
 .settings-actions button + button { margin-left: .5rem; }
 .settings-actions button { font: inherit; font-size: .85rem; font-weight: 600; padding: .4rem .75rem; border: 2px solid #000; border-radius: .25rem; cursor: pointer; background: #000; color: #fff; }
 .settings-actions button[value="cancel"] { background: #fff; color: #000; }
+
+/* --- narrow screens (phones) --- */
+@media (max-width: 640px) {
+  /* The action cluster is a fixed top-right overlay on desktop; on a narrow
+     screen drop it into normal flow as its own row under the title (flex order
+     keeps it directly below the header) so nothing crowds the heading. */
+  header { order: -2; padding: .6rem .75rem; }
+  header h1 { font-size: 1.2rem; }
+  .header-actions { position: static; order: -1; z-index: auto; padding: 0 .75rem .5rem; }
+
+  #board { padding: .75rem; gap: .75rem; }
+  .column { width: 85vw; max-width: 300px; }
+
+  /* Notes: stack the list above the detail instead of side by side. */
+  #notes { flex-direction: column; padding: .75rem; }
+  .notes-pane { width: 100%; max-height: 45vh; }
+  .note-detail { min-height: 40vh; }
+
+  /* Bigger tap targets for the column controls. */
+  .col-move-btn, .col-delete-btn { font-size: 1.2rem; padding: .1rem .3rem; }
+}
